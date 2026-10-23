@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Filius en ligne</title>
+<meta name="description" content="Le simulateur de réseaux Filius, directement dans le navigateur, sans installation.">
+<link rel="icon" href="logo-filius.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- CheerpJ : machine virtuelle Java en WebAssembly (licence Community, gratuite pour les logiciels libres) -->
+<script src="https://cjrtnc.leaningtech.com/4.3/loader.js"></script>
+<style>
+  :root {
+    --ink: #1a1d21;
+    --ink-soft: #5b636d;
+    --paper: #ffffff;
+    --surface: #f4f5f7;
+    --line: #d9dde2;
+    --accent: #c4161c;
+    --accent-hover: #a11217;
+    --link: #1f5fa8;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e8eaed; --ink-soft: #a0a7b0; --paper: #15171a; --surface: #1f2226; --line: #363b42;
+      --accent: #d9363c; --accent-hover: #e8555a; --link: #7fb0e8;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #e8eaed; --ink-soft: #a0a7b0; --paper: #15171a; --surface: #1f2226; --line: #363b42;
+    --accent: #d9363c; --accent-hover: #e8555a; --link: #7fb0e8;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 1rem/1.6 "Inter", system-ui, sans-serif;
+  }
+  a { color: var(--link); }
+  :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+
+  /* ---------- Écran d'accueil ---------- */
+  #accueil {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    max-width: 30rem;
+    margin: 0 auto;
+    padding: 3rem 1rem;
+    --espace: 2rem;
+  }
+  #accueil > * { margin-top: 0; margin-bottom: 0; }
+  #accueil > * + * { margin-top: var(--espace); }
+  .titre { display: flex; align-items: center; gap: 1rem; }
+  .titre img { width: 64px; height: 64px; }
+  h1 { font-size: 2.25rem; font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; margin: 0; }
+  #accueil > .accroche { color: var(--ink-soft); margin-top: 0.75rem; text-align: center; }
+
+  .actions { display: grid; gap: 0.75rem; }
+  button {
+    font: inherit;
+    font-weight: 500;
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    cursor: pointer;
+    width: 100%;
+  }
+  button:hover { background: var(--surface); }
+  button[disabled] { opacity: .55; cursor: progress; }
+  button.principal { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.principal:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+
+  .note { font-size: 0.875rem; color: var(--ink-soft); }
+  .note p { margin: 0; }
+  .note p + p { margin-top: 0.5rem; }
+  footer {
+    font-size: 0.8125rem; color: var(--ink-soft);
+    border-top: 1px solid var(--line); padding-top: var(--espace);
+  }
+  footer p { margin: 0; text-align: center; }
+  footer a { white-space: nowrap; }
+  .lien-forge {
+    display: block; width: max-content; margin: 1rem auto 0; padding: 0.4rem;
+    color: var(--ink-soft); border-radius: 6px;
+  }
+  .lien-forge:hover { color: var(--ink); }
+
+  #erreur {
+    display: none; border: 1px solid var(--accent); color: var(--ink); border-radius: 8px;
+    padding: 0.7rem 1rem; font-size: 0.9rem;
+  }
+  #erreur.visible { display: block; }
+
+  .glisser-actif #accueil { outline: 2px dashed var(--link); outline-offset: 8px; }
+
+  /* ---------- Filius en cours d'exécution ---------- */
+  #ecran-filius { display: none; position: fixed; inset: 0; background: #fff; }
+  body.en-cours #accueil { display: none; }
+  body.en-cours #ecran-filius { display: block; }
+  #fin {
+    display: none; position: fixed; inset: 0; place-items: center; background: var(--paper);
+    text-align: center; padding: 1.5rem;
+  }
+  #fin.visible { display: grid; }
+  #fin button { width: auto; margin-top: 1rem; }
+
+  /* ---------- Boîte d'ouverture de fichier (appelée depuis Filius) ---------- */
+  dialog {
+    border: 1px solid var(--line); border-radius: 12px; padding: 1.5rem; width: min(28rem, calc(100vw - 2rem));
+    background: var(--paper); color: var(--ink); box-shadow: 0 16px 48px rgba(0, 0, 0, .25);
+  }
+  dialog::backdrop { background: rgba(0, 0, 0, .4); }
+  dialog h2 { margin: 0 0 1rem; font-size: 1.125rem; font-weight: 600; }
+  .depot {
+    border: 1px dashed var(--line); border-radius: 8px; padding: 1.5rem;
+    text-align: center; color: var(--ink-soft);
+  }
+  .depot.survol { border-color: var(--link); color: var(--ink); }
+  .depot button { width: auto; margin-top: 0.75rem; }
+  .boutons-dialogue { display: flex; justify-content: flex-end; margin-top: 1rem; }
+  .boutons-dialogue button { width: auto; }
+  .visuellement-cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+
+<main id="accueil">
+  <div class="titre">
+    <img src="logo-filius.png" alt="" width="64" height="64">
+    <h1>Filius</h1>
+  </div>
+  <p class="accroche">Le simulateur de réseaux, directement dans le navigateur.</p>
+
+  <div id="erreur" role="alert"></div>
+
+  <div class="actions">
+    <button class="principal" id="btn-nouveau" type="button">Lancer Filius</button>
+    <button id="btn-ouvrir" type="button">Ouvrir un fichier .fls</button>
+    <input type="file" id="fichier-accueil" accept=".fls" class="visuellement-cache" tabindex="-1">
+  </div>
+
+  <div class="note">
+    <p>Le premier lancement peut prendre jusqu’à une minute, le temps de charger Java dans le navigateur.</p>
+    <p>Pour garder votre travail, cliquez sur la disquette dans Filius : le fichier .fls arrive dans votre dossier Téléchargements.</p>
+  </div>
+
+  <footer>
+    <p>Filius est un logiciel libre (GPL) créé par Stefan Freischlad : <a href="https://www.lernsoftware-filius.de" target="_blank" rel="noopener">lernsoftware-filius.de</a>. Il fonctionne ici grâce à <a href="https://cheerpj.com" target="_blank" rel="noopener">CheerpJ</a>.</p>
+    <!-- À compléter : adresse du projet sur la Forge -->
+    <a class="lien-forge" id="lien-forge" href="https://forge.apps.education.fr/" target="_blank" rel="noopener" title="Le projet sur la Forge des communs numériques éducatifs" aria-label="Le projet sur la Forge des communs numériques éducatifs">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="m23.6004 9.5927-.0337-.0862L20.3.9814a.851.851 0 0 0-.3362-.405.8748.8748 0 0 0-.9997.0539.8748.8748 0 0 0-.29.4399l-2.2055 6.748H7.5375l-2.2057-6.748a.8573.8573 0 0 0-.29-.4412.8748.8748 0 0 0-.9997-.0537.8585.8585 0 0 0-.3362.4049L.4332 9.5015l-.0325.0862a6.0657 6.0657 0 0 0 2.0119 7.0105l.0113.0087.03.0213 4.976 3.7264 2.462 1.8633 1.4995 1.1321a1.0085 1.0085 0 0 0 1.2197 0l1.4995-1.1321 2.4619-1.8633 5.006-3.7489.0125-.01a6.0682 6.0682 0 0 0 2.0094-7.003z"/></svg>
+    </a>
+  </footer>
+</main>
+
+<div id="ecran-filius" aria-label="Filius"></div>
+
+<div id="fin" role="status">
+  <div>
+    <p><strong>Filius est fermé.</strong></p>
+    <p class="note">Les réseaux non enregistrés sont perdus.</p>
+    <button class="principal" type="button" onclick="location.reload()">Revenir à l’accueil</button>
+  </div>
+</div>
+
+<dialog id="dialogue-ouvrir" aria-labelledby="titre-ouvrir">
+  <h2 id="titre-ouvrir">Ouvrir un réseau Filius</h2>
+  <div class="depot" id="depot">
+    Glissez un fichier .fls ici
+    <br><button type="button" id="btn-choisir">Choisir un fichier…</button>
+  </div>
+  <input type="file" id="fichier-dialogue" accept=".fls" class="visuellement-cache" tabindex="-1">
+  <div class="boutons-dialogue"><button type="button" id="btn-annuler">Annuler</button></div>
+</dialog>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------
+   Chemins. Avec CheerpJ, /app/ correspond à la racine du serveur web.
+   Sur GitLab Pages, le site est servi sous /<projet>/ : on part donc
+   du chemin de cette page pour retrouver les fichiers Java.
+   ------------------------------------------------------------------ */
+const BASE = new URL(".", location.href).pathname;          // ex. /filius-web/
+const DOSSIER_FILIUS = "/app" + BASE + "filius/";
+const LIBS = [
+  "batik-anim.jar", "batik-awt-util.jar", "batik-bridge.jar", "batik-codec.jar", "batik-constants.jar",
+  "batik-css.jar", "batik-dom.jar", "batik-ext.jar", "batik-gvt.jar", "batik-i18n.jar", "batik-parser.jar",
+  "batik-script.jar", "batik-shared-resources.jar", "batik-svg-dom.jar", "batik-svggen.jar",
+  "batik-transcoder.jar", "batik-util.jar", "batik-xml.jar", "commons-cli.jar", "commons-io.jar",
+  "commons-lang3.jar", "commons-logging.jar", "itext5.jar", "javax.activation.jar", "jaxb-api.jar",
+  "libhtmlparser.jar", "logback-classic.jar", "logback-core.jar", "semantic-version.jar", "slf4j-api.jar",
+  "spring3-aop.jar", "spring3-beans.jar", "spring3-context.jar", "spring3-core.jar", "spring3-expression.jar",
+  "spring3-web.jar", "xml-apis-ext.jar", "xmlgraphics-commons.jar"
+];
+const CLASSPATH = LIBS.map(j => DOSSIER_FILIUS + "lib/" + j).concat(DOSSIER_FILIUS + "filius.jar").join(":");
+
+const $ = sel => document.querySelector(sel);
+let enCours = false;
+
+function afficherErreur(message) {
+  const el = $("#erreur");
+  el.textContent = message;
+  el.classList.add("visible");
+}
+
+/* ------------------------------------------------------------------
+   Fichiers : un .fls choisi par l'utilisateur est copié dans /str/,
+   un dossier en lecture seule du système de fichiers de CheerpJ.
+   ------------------------------------------------------------------ */
+const nomsUtilises = new Set();
+function nomPropre(nom) {
+  let base = (nom || "reseau.fls").replace(/[^\w.\-]+/g, "_");
+  if (!/\.fls$/i.test(base)) base += ".fls";
+  let candidat = base, n = 2;
+  while (nomsUtilises.has(candidat)) candidat = base.replace(/\.fls$/i, "-" + (n++) + ".fls");
+  nomsUtilises.add(candidat);
+  return candidat;
+}
+async function copierDansCheerpJ(octets, nom) {
+  const chemin = "/str/" + nomPropre(nom);
+  cheerpOSAddStringFile(chemin, new Uint8Array(octets));
+  return chemin;
+}
+async function lireFichierLocal(fichier) {
+  if (!/\.fls$/i.test(fichier.name)) throw new Error("Ce fichier n’est pas un réseau Filius (.fls).");
+  return copierDansCheerpJ(await fichier.arrayBuffer(), fichier.name);
+}
+async function telechargerFls(url) {
+  const reponse = await fetch(url);
+  if (!reponse.ok) throw new Error("Le fichier " + url + " est introuvable (erreur " + reponse.status + ").");
+  const nom = decodeURIComponent(new URL(url, location.href).pathname.split("/").pop() || "exercice.fls");
+  return copierDansCheerpJ(await reponse.arrayBuffer(), nom);
+}
+
+/* ------------------------------------------------------------------
+   Méthodes natives appelées par Filius (classe filius.web.WebBridge).
+   ------------------------------------------------------------------ */
+
+// Bouton « Ouvrir » de Filius : on affiche la boîte de dialogue HTML
+// et on renvoie le chemin du fichier copié, ou "" si l'utilisateur annule.
+function Java_filius_web_WebBridge_ouvrirFichier(lib) {
+  return new Promise(resolve => {
+    const dialogue = $("#dialogue-ouvrir");
+    const input = $("#fichier-dialogue");
+    const depot = $("#depot");
+    let fini = false;
+    const terminer = chemin => {
+      if (fini) return;
+      fini = true;
+      input.value = "";
+      if (dialogue.open) dialogue.close();
+      resolve(chemin || "");
+    };
+    const traiter = async fichier => {
+      try { terminer(await lireFichierLocal(fichier)); }
+      catch (e) { alert(e.message); }
+    };
+    input.onchange = () => input.files[0] && traiter(input.files[0]);
+    $("#btn-choisir").onclick = () => input.click();
+    $("#btn-annuler").onclick = () => terminer("");
+    dialogue.oncancel = () => terminer("");
+    depot.ondragover = e => { e.preventDefault(); depot.classList.add("survol"); };
+    depot.ondragleave = () => depot.classList.remove("survol");
+    depot.ondrop = e => {
+      e.preventDefault();
+      depot.classList.remove("survol");
+      if (e.dataTransfer.files[0]) traiter(e.dataTransfer.files[0]);
+    };
+    dialogue.showModal();
+    $("#btn-choisir").focus();
+  });
+}
+
+// Bouton « Enregistrer » de Filius : Filius a écrit le fichier dans le
+// stockage du navigateur (/files/...), on le propose au téléchargement.
+async function Java_filius_web_WebBridge_telechargerFichier(lib, chemin, nom) {
+  const blob = await cjFileBlob(chemin);
+  const url = URL.createObjectURL(new Blob([blob], { type: "application/octet-stream" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nom;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+
+/* ------------------------------------------------------------------
+   Démarrage de Java (dès l'ouverture de la page, pour gagner du temps)
+   puis de Filius.
+   ------------------------------------------------------------------ */
+const javaPret = (typeof cheerpjInit !== "function")
+  ? Promise.reject(new Error("le script CheerpJ n’a pas pu être chargé depuis cjrtnc.leaningtech.com"))
+  : cheerpjInit({
+  version: 11,
+  javaProperties: [
+    "user.home=/files",
+    "filius.web=true",
+    "filius.resources=" + DOSSIER_FILIUS
+  ],
+  natives: {
+    Java_filius_web_WebBridge_ouvrirFichier,
+    Java_filius_web_WebBridge_telechargerFichier
+  }
+});
+javaPret.catch(e => {
+  afficherErreur("Java n’a pas pu démarrer dans ce navigateur. Vérifiez la connexion, puis essayez avec une version récente de Firefox, Chrome ou Edge. (" + e.message + ")");
+});
+
+async function lancerFilius(cheminFichier) {
+  if (enCours) return;
+  enCours = true;
+  document.querySelectorAll("#accueil button").forEach(b => b.disabled = true);
+  try {
+    await javaPret;
+  } catch (e) {
+    enCours = false;
+    document.querySelectorAll("#accueil button").forEach(b => b.disabled = false);
+    return;
+  }
+  document.body.classList.add("en-cours");
+  cheerpjCreateDisplay(-1, -1, $("#ecran-filius"));
+  const args = cheminFichier ? [cheminFichier] : [];
+  const code = await cheerpjRunMain("filius.Main", CLASSPATH, ...args);
+  console.log("Filius s'est arrêté (code " + code + ")");
+  enCours = false;
+  $("#fin").classList.add("visible");
+}
+
+/* ------------------------------------------------------------------
+   Écran d'accueil
+   ------------------------------------------------------------------ */
+$("#btn-nouveau").addEventListener("click", () => lancerFilius(null));
+
+$("#btn-ouvrir").addEventListener("click", () => $("#fichier-accueil").click());
+$("#fichier-accueil").addEventListener("change", async e => {
+  const fichier = e.target.files[0];
+  if (!fichier) return;
+  try {
+    await javaPret;
+    lancerFilius(await lireFichierLocal(fichier));
+  } catch (err) { afficherErreur(err.message); }
+});
+
+// Glisser-déposer un .fls sur la page d'accueil
+document.addEventListener("dragover", e => {
+  if (enCours) return;
+  e.preventDefault();
+  document.body.classList.add("glisser-actif");
+});
+document.addEventListener("dragleave", e => {
+  if (e.relatedTarget === null) document.body.classList.remove("glisser-actif");
+});
+document.addEventListener("drop", async e => {
+  document.body.classList.remove("glisser-actif");
+  if (enCours) return;
+  e.preventDefault();
+  const fichier = e.dataTransfer.files[0];
+  if (!fichier) return;
+  try {
+    await javaPret;
+    lancerFilius(await lireFichierLocal(fichier));
+  } catch (err) { afficherErreur(err.message); }
+});
+
+// Lien direct vers un exercice : ...?fichier=<adresse d'un .fls> (voir le README)
+const parametreFichier = new URLSearchParams(location.search).get("fichier");
+if (parametreFichier) {
+  (async () => {
+    try {
+      await javaPret;
+      lancerFilius(await telechargerFls(new URL(parametreFichier, location.href).href));
+    } catch (err) {
+      afficherErreur(err.message + " Vous pouvez lancer Filius avec un réseau vide.");
+    }
+  })();
+}
+
+// Éviter de perdre un réseau en fermant l'onglet par erreur
+window.addEventListener("beforeunload", e => {
+  if (enCours) { e.preventDefault(); e.returnValue = ""; }
+});
+</script>
+</body>
+</html>

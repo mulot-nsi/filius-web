@@ -1,0 +1,12 @@
+# Publication sur GitLab Pages : le site est déjà prêt dans public/,
+# il n'y a rien à compiler.
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "Publication du dossier public/"
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

@@ -1,0 +1,165 @@
+diff --git a/src/main/java/filius/gui/GUIMainMenu.java b/src/main/java/filius/gui/GUIMainMenu.java
+index 16dfd4b..31ef002 100644
+--- a/src/main/java/filius/gui/GUIMainMenu.java
++++ b/src/main/java/filius/gui/GUIMainMenu.java
+@@ -58,6 +58,7 @@ import filius.rahmenprogramm.I18n;
+ import filius.rahmenprogramm.Information;
+ import filius.rahmenprogramm.SzenarioVerwaltung;
+ import filius.software.system.SystemSoftware;
++import filius.web.WebBridge;
+ 
+ public class GUIMainMenu implements Serializable, I18n {
+     private static Logger LOG = LoggerFactory.getLogger(GUIMainMenu.class);
+@@ -350,18 +351,29 @@ public class GUIMainMenu implements Serializable, I18n {
+             LOG.debug("", exc);
+         }
+         if (entscheidung == JOptionPane.YES_OPTION && GUIContainer.getGUIContainer().getActiveSite() != MODUS_AKTION) {
+-            FileDialog fileDialog = new FileDialog(JMainFrame.getJMainFrame(), messages.getString("main_msg3"),
+-                    FileDialog.LOAD);
+-            FilenameFilter filiusFilenameFilter = (dir, name) -> name.endsWith(".fls");
+-            fileDialog.setFilenameFilter(filiusFilenameFilter);
+-            initCurrentFileOrDirSelection(fileDialog);
+-            fileDialog.setVisible(true);
+-
+-            String selectedFile = fileDialog.getFile();
+-            if (selectedFile != null) {
+-                Information.getInformation().setLastOpenedDirectory(fileDialog.getDirectory());
++            Path selectedPath = null;
++            if (WebBridge.isActive()) {
++                // Version web : sélecteur de fichier du navigateur
++                String webPath = WebBridge.ouvrirFichier();
++                if (webPath != null && !webPath.isEmpty()) {
++                    selectedPath = Path.of(webPath);
++                }
++            } else {
++                FileDialog fileDialog = new FileDialog(JMainFrame.getJMainFrame(), messages.getString("main_msg3"),
++                        FileDialog.LOAD);
++                FilenameFilter filiusFilenameFilter = (dir, name) -> name.endsWith(".fls");
++                fileDialog.setFilenameFilter(filiusFilenameFilter);
++                initCurrentFileOrDirSelection(fileDialog);
++                fileDialog.setVisible(true);
++                if (fileDialog.getFile() != null) {
++                    Information.getInformation().setLastOpenedDirectory(fileDialog.getDirectory());
++                    selectedPath = Path.of(fileDialog.getDirectory(), fileDialog.getFile());
++                }
++            }
++
++            if (selectedPath != null) {
+                 try {
+-                    Path file = Path.of(fileDialog.getDirectory(), selectedFile);
++                    Path file = selectedPath;
+                     Information.getInformation().reset();
+                     SzenarioVerwaltung.getInstance().laden(file.toString(),
+                             GUIContainer.getGUIContainer().getKnotenItems(),
+@@ -380,7 +392,48 @@ public class GUIMainMenu implements Serializable, I18n {
+         }
+     }
+ 
++    /**
++     * Version web : Filius enregistre le réseau dans le stockage du navigateur (/files/filius/) puis la page propose
++     * le fichier au téléchargement.
++     */
++    private void saveScenarioWeb() {
++        String suggestion = "mon_reseau.fls";
++        String current = SzenarioVerwaltung.getInstance().holePfad();
++        if (current != null && !current.isEmpty()) {
++            suggestion = new File(current).getName();
++        }
++        Object reponse = JOptionPane.showInputDialog(JMainFrame.getJMainFrame(),
++                "Nom du fichier à télécharger :", messages.getString("main_msg4"), JOptionPane.QUESTION_MESSAGE, null,
++                null, suggestion);
++        if (reponse == null) {
++            return;
++        }
++        String nom = reponse.toString().trim().replaceAll("[\\\\/:*?\"<>|]", "_");
++        if (nom.isEmpty()) {
++            return;
++        }
++        if (!nom.toLowerCase().endsWith(".fls")) {
++            nom = nom + ".fls";
++        }
++        File dossier = new File(System.getProperty("user.home"), "filius");
++        dossier.mkdirs();
++        String targetFilePath = new File(dossier, nom).getPath();
++        boolean erfolg = SzenarioVerwaltung.getInstance().speichern(targetFilePath,
++                GUIContainer.getGUIContainer().getKnotenItems(), GUIContainer.getGUIContainer().getCableItems(),
++                GUIContainer.getGUIContainer().getDocuItems());
++        if (erfolg) {
++            SzenarioVerwaltung.getInstance().setCurrentFile(targetFilePath, false);
++            WebBridge.telechargerFichier(targetFilePath, nom);
++        } else {
++            JOptionPane.showMessageDialog(JMainFrame.getJMainFrame(), messages.getString("guimainmemu_msg11"));
++        }
++    }
++
+     private void saveScenario() {
++        if (WebBridge.isActive()) {
++            saveScenarioWeb();
++            return;
++        }
+         boolean erfolg;
+         FileDialog fileDialog = new FileDialog(JMainFrame.getJMainFrame(), messages.getString("main_msg4"),
+                 FileDialog.SAVE);
+diff --git a/src/main/java/filius/rahmenprogramm/ResourceUtil.java b/src/main/java/filius/rahmenprogramm/ResourceUtil.java
+index e86b0af..64ffd39 100644
+--- a/src/main/java/filius/rahmenprogramm/ResourceUtil.java
++++ b/src/main/java/filius/rahmenprogramm/ResourceUtil.java
+@@ -34,6 +34,19 @@ public class ResourceUtil {
+     }
+ 
+     public static String getResourceUrlEncodedPath(String relativePath) {
++        // Version web (CheerpJ) : les ressources sont lues directement dans le dossier indiqué par la propriété
++        // filius.resources, sans passer par un dossier dans le classpath.
++        String webBase = System.getProperty("filius.resources");
++        if (webBase != null) {
++            File candidate = new File(webBase, relativePath);
++            if (relativePath.endsWith("/") || candidate.exists()) {
++                String encoded = candidate.toURI().getRawPath().replace("+", "%2b");
++                if (relativePath.endsWith("/") && !encoded.endsWith("/")) {
++                    encoded += "/";
++                }
++                return encoded;
++            }
++        }
+         String urlEncodedPath = null;
+         URL systemResource = ClassLoader.getSystemResource(relativePath);
+         if (null == systemResource) {
+diff --git a/src/main/java/filius/web/WebBridge.java b/src/main/java/filius/web/WebBridge.java
+new file mode 100644
+index 0000000..cb8542d
+--- /dev/null
++++ b/src/main/java/filius/web/WebBridge.java
+@@ -0,0 +1,33 @@
++package filius.web;
++
++/**
++ * Pont entre Filius et la page web lorsque Filius est exécuté dans un navigateur avec CheerpJ.
++ *
++ * Les méthodes natives sont implémentées en JavaScript dans index.html (option "natives" de cheerpjInit). Hors
++ * navigateur (propriété système filius.web absente), elles ne sont jamais appelées.
++ */
++public final class WebBridge {
++
++    private WebBridge() {}
++
++    /** @return true si Filius tourne dans le navigateur (lancé avec -Dfilius.web=true). */
++    public static boolean isActive() {
++        return Boolean.getBoolean("filius.web");
++    }
++
++    /**
++     * Demande à la page d'afficher un sélecteur de fichier du navigateur. Le fichier choisi est copié dans le système
++     * de fichiers virtuel de CheerpJ.
++     *
++     * @return le chemin du fichier copié (par ex. /str/import/1/reseau.fls), ou une chaîne vide si l'utilisateur annule.
++     */
++    public static native String ouvrirFichier();
++
++    /**
++     * Demande à la page de proposer le fichier au téléchargement (il arrive dans le dossier Téléchargements).
++     *
++     * @param chemin chemin du fichier dans le système de fichiers virtuel (par ex. /files/filius/reseau.fls)
++     * @param nom nom proposé pour le fichier téléchargé
++     */
++    public static native void telechargerFichier(String chemin, String nom);
++}
