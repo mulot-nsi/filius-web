@@ -34,6 +34,8 @@ python3 -m http.server 8000
 
 Puis ouvrez <http://localhost:8000/>. Une connexion à Internet est nécessaire, car CheerpJ est chargé depuis `cjrtnc.leaningtech.com`.
 
+CheerpJ lit les fichiers `.jar` morceau par morceau (requêtes HTTP « Range »). Ni le serveur Pages de la Forge ni `python3 -m http.server` ne gèrent ces requêtes : c'est le service worker `public/sw.js` qui découpe les fichiers à leur place. Ne le supprimez pas.
+
 ## Utilisation
 
 - **Lancer Filius** : un réseau vide, en français.
@@ -60,6 +62,7 @@ Les élèves reçoivent chacun leur propre copie du réseau. Leurs modifications
 ```
 public/                  le site publié
   index.html             page d'accueil + lancement de Filius avec CheerpJ
+  sw.js                  service worker : répond aux requêtes « Range » de CheerpJ
   filius/filius.jar      Filius 2.13.0, compilé pour Java 11, avec le correctif web
   filius/lib/            bibliothèques utilisées par Filius (Batik, iText, Spring, Logback…)
   filius/config/         configuration ; filius.ini force le français
@@ -86,6 +89,7 @@ Pour passer à une nouvelle version de Filius, modifiez `VERSION` dans `build/bu
 - Le premier lancement peut prendre jusqu'à une minute (téléchargement de Java dans le navigateur). Les suivants profitent du cache.
 - Les préférences de Filius sont stockées dans le navigateur. Seuls les fichiers téléchargés sont de vraies sauvegardes : vider les données du navigateur ou utiliser une fenêtre privée efface le reste.
 - L'assistant de création de logiciels de Filius est désactivé : il a besoin d'un compilateur Java, absent du navigateur.
+- Le site a besoin des service workers (voir plus haut). Si un navigateur les bloque (certaines navigations privées, certaines politiques de sécurité), Filius ne démarre pas sur la Forge.
 - Prévu pour les navigateurs récents (Firefox, Chrome, Edge). Safari est pris en charge par CheerpJ, mais il est moins éprouvé.
 
 ## Licences

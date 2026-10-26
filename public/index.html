@@ -298,12 +298,33 @@ async function Java_filius_web_WebBridge_telechargerFichier(lib, chemin, nom) {
 }
 
 /* ------------------------------------------------------------------
+   Service worker (sw.js) : il répond aux requêtes « Range » de CheerpJ
+   à la place du serveur, qui ne les gère pas sur la Forge. Il doit
+   contrôler la page avant le démarrage de Java.
+   ------------------------------------------------------------------ */
+async function serviceWorkerPret() {
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    const sw = navigator.serviceWorker;
+    const controle = new Promise(resolve => sw.addEventListener("controllerchange", resolve, { once: true }));
+    await sw.register("sw.js");
+    const inscription = await sw.ready;
+    if (sw.controller) return;
+    inscription.active.postMessage("prendre-le-controle");
+    await Promise.race([controle, new Promise(resolve => setTimeout(resolve, 5000))]);
+  } catch (e) {
+    // Ex. navigation privée : on continue, ça marche si le serveur gère « Range ».
+    console.warn("Service worker indisponible :", e);
+  }
+}
+
+/* ------------------------------------------------------------------
    Démarrage de Java (dès l'ouverture de la page, pour gagner du temps)
    puis de Filius.
    ------------------------------------------------------------------ */
 const javaPret = (typeof cheerpjInit !== "function")
   ? Promise.reject(new Error("le script CheerpJ n’a pas pu être chargé depuis cjrtnc.leaningtech.com"))
-  : cheerpjInit({
+  : serviceWorkerPret().then(() => cheerpjInit({
   version: 11,
   javaProperties: [
     "user.home=/files",
@@ -314,7 +335,7 @@ const javaPret = (typeof cheerpjInit !== "function")
     Java_filius_web_WebBridge_ouvrirFichier,
     Java_filius_web_WebBridge_telechargerFichier
   }
-});
+}));
 javaPret.catch(e => {
   afficherErreur("Java n’a pas pu démarrer dans ce navigateur. Vérifiez la connexion, puis essayez avec une version récente de Firefox, Chrome ou Edge. (" + e.message + ")");
 });
