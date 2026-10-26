@@ -1,5 +1,7 @@
 # Filius en ligne
 
+> **Note** : cette adaptation web a été en grande partie réalisée par une IA agentique.
+
 [Filius](https://www.lernsoftware-filius.de), le simulateur de réseaux, directement dans le navigateur. Les élèves n'ont rien à installer : ils ouvrent une page web et Filius démarre.
 
 Le programme Java d'origine tourne dans le navigateur grâce à [CheerpJ](https://cheerpj.com), une machine virtuelle Java en WebAssembly. Tout s'exécute sur le poste de l'élève : le serveur ne fait que distribuer des fichiers statiques. Une page GitLab Pages suffit donc, quel que soit le nombre d'élèves.
